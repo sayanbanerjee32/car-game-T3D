@@ -173,6 +173,29 @@ class Game(Widget):
         self.car.action_q = action_q
         self.car.next_state_reward_done_tuple_q = next_state_reward_done_tuple_q
     
+    def get_state(self):
+        # Sensor readings
+        sensor1_signal = self.car.signal1
+        sensor2_signal = self.car.signal2
+        sensor3_signal = self.car.signal3
+
+        # Calculate orientation to goal
+        goal_direction_vector = Vector(goal_x - self.car.x, goal_y - self.car.y)
+        car_orientation = Vector(*self.car.velocity).angle(goal_direction_vector) / 180.0
+
+        # Compile the state representation
+        state = np.array([
+            sensor1_signal,  # Distance to obstacle from sensor 1
+            sensor2_signal,  # Distance to obstacle from sensor 2
+            sensor3_signal,  # Distance to obstacle from sensor 3
+            car_orientation,  # Orientation towards the goal
+            -car_orientation  # Symmetric orientation (can help with symmetry in learning)
+        ])
+
+        # Return the state as a numpy array
+        return state
+
+    
     # def serve_target(self):
     #     self.target.center = self.center
 
@@ -219,9 +242,12 @@ class Game(Widget):
         yy = goal_y - self.car.y
         orientation = Vector(*self.car.velocity).angle((xx,yy))/180.
         last_signal = [self.car.signal1, self.car.signal2, self.car.signal3, orientation, -orientation]
-        action = brain.update(last_reward, last_signal)
-        scores.append(brain.score())
-        rotation = action2rotation[action]
+        # For T3D
+        # action = brain.update(last_reward, last_signal)
+        # scores.append(brain.score())
+        # rotation = action2rotation[action]
+        action_array = self.car.action_q.get()
+        rotation = action_array[0]
         self.car.move(rotation)
         distance = np.sqrt((self.car.x - goal_x)**2 + (self.car.y - goal_y)**2)
         
