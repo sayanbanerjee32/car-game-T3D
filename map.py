@@ -2,9 +2,10 @@
 
 # Importing the libraries
 import numpy as np
-# from random import random, randint
+import torch
+import torch.nn as nn
+import torch.optim as optim
 import random
-# import matplotlib.pyplot as plt
 import time
 
 # Importing the Kivy packages
@@ -20,17 +21,14 @@ from kivy.core.image import Image as CoreImage
 from PIL import Image as PILImage
 from kivy.graphics.texture import Texture
 
-# Importing the Dqn object from our AI in ai.py
-# from ai import Dqn
+# Importing the TD3 object from your AI implementation
+from ai import TD3, ReplayBuffer
 
-# Adding this line if we don't want the right click to put a red point
+# Configurations
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
 Config.set('graphics', 'resizable', False)
 Config.set('graphics', 'width', '1583')
 Config.set('graphics', 'height', '731')
-# Config.set('graphics', 'width', '1429')
-# Config.set('graphics', 'height', '660')
-
 
 # Introducing last_x and last_y, used to keep the last point in memory when we draw the sand on the map
 last_x = 0
@@ -38,70 +36,57 @@ last_y = 0
 n_points = 0
 length = 0
 
-# commented for T3D
-# Getting our AI, which we call "brain", and that contains our neural network that represents our Q-function
-# brain = Dqn(5,3,0.9)
-# action2rotation = [0,5,-5]
-last_reward = 0
-scores = []
-# im = CoreImage("./images/MASK1.png")
-im = CoreImage("./images_new/MASK1.png")
-# textureMask = CoreImage(source="./kivytest/simplemask1.png")
+# Initialize the TD3 agent with continuous action space
+state_dim = 5
+action_dim = 1
+max_action = 5  # Example max action value, adjust as necessary
+brain = TD3(state_dim, action_dim, max_action)
 
-targets_list = [(1470, 70),
-                (165, 227),
-                (812, 560)]
+replay_buffer = ReplayBuffer(max_size=1e6)
+
+# Hyperparameters
+batch_size = 256
+initial_buffer = 10000
+reset_car_after = 1000
+
+# num_episodes = 1000x
+# max_timesteps_per_episode = 200
+# save_interval = 50
+
+# last_reward = 0
+new_reward = 0
+scores = []
+im = CoreImage("./images_new/MASK1.png")
+
+targets_list = [(1470, 70), (165, 227), (812, 560)]
+initialization_grid = (6,2)
+total_width = 1583
+total_height = 731
 
 # Initializing the map
 first_update = True
-
-# For T3D
-max_steps = 2500
-current_step = 0
-done = True
-on_road = -1
-on_road_count = 0
-off_road_count = 0
-boundary_hit_count = 0
-goal_hit_count = 0
-train_episode_num = 0
-eval_episode_num = 0
-mode="eval"
-
 def init():
     global sand
     global goal_x
     global goal_y
     global first_update
-
-    # for T3D
-    global done
-    global max_steps
-    global current_step
+    global is_train
 
     sand = np.zeros((longueur,largeur))
-    # img = PILImage.open("./images/mask.png").convert('L')
     img = PILImage.open("./images_new/mask.png").convert('L')
     sand = np.asarray(img)/255
-    # goal_x = 1420
-    # goal_y = 622
+
+    is_train = True
+
     random_target = random.choice(targets_list)
     goal_x = random_target[0]
     goal_y = random_target[1]
     first_update = False
-    # global swap
-    # swap = 0
-
-    # for T3D
-    done = False
-    current_step = 0
-
 
 # Initializing the last distance
 last_distance = 0
 
 # Creating the car class
-
 class Car(Widget):
     
     angle = NumericProperty(0)
@@ -150,8 +135,24 @@ class Ball3(Widget):
 class Target(Widget):
     pass
 
-# Creating the game class
+def calculate_center_points(total_width, total_height, grid_size):
+    grid_width, grid_height = grid_size
 
+    # Calculate the width and height of each cell in the grid
+    cell_width = total_width / grid_width
+    cell_height = total_height / grid_height
+
+    # Calculate the center points
+    center_points = []
+    for j in range(grid_height):
+        for i in range(grid_width):
+            center_x = round((i + 0.5) * cell_width)
+            center_y = round((j + 0.5) * cell_height)
+            center_points.append((center_x, center_y))
+    
+    return center_points
+
+# Creating the game class
 class Game(Widget):
 
     car = ObjectProperty(None)
@@ -160,154 +161,157 @@ class Game(Widget):
     ball2 = ObjectProperty(None)
     ball3 = ObjectProperty(None)
     
-    # for T3D
-    def serve_car(self, start_event, reset_q, mode_q, state_q, action_q, next_state_reward_done_tuple_q):
-        self.car.center = self.center
+
+    
+    def __init__(self, **kwargs):
+        super(Game, self).__init__(**kwargs)
+        # self.replay_buffer = ReplayBuffer()
+        self.timesteps = 0
+        self.total_timesteps = 0
+        self.update_interval = 1  # Update the policy every after every batch
+
+        self.last_signal = [0] * state_dim
+        self.last_action = [0] * action_dim
+        self.last_reward = 0
+        self.last_done = False
+
+        self.max_training_iteration = 500000
+        self.trn_it = 0
+        self.episode_last_step_reward = 0
+        self.episode_rewards = []
+
+        # Define possible starting positions
+        random_location = calculate_center_points(total_width, total_height,
+                                                   initialization_grid)
+        self.starting_positions = random_location #+ targets_list
+
+    def serve_car(self, x = None, y = None):
+        if x is not None and y is not None:
+            self.car.center = (x, y)
+        else:
+            self.car.center = random.choice(self.starting_positions)
+        # self.car.center = self.center
         self.car.velocity = Vector(6, 0)
-
-        # for T3D
-        self.car.start_event = start_event
-        self.car.reset_q = reset_q
-        self.car.mode_q = mode_q
-        self.car.state_q = state_q
-        self.car.action_q = action_q
-        self.car.next_state_reward_done_tuple_q = next_state_reward_done_tuple_q
     
-    def get_state(self):
-        # Sensor readings
-        sensor1_signal = self.car.signal1
-        sensor2_signal = self.car.signal2
-        sensor3_signal = self.car.signal3
-
-        # Calculate orientation to goal
-        goal_direction_vector = Vector(goal_x - self.car.x, goal_y - self.car.y)
-        car_orientation = Vector(*self.car.velocity).angle(goal_direction_vector) / 180.0
-
-        # Compile the state representation
-        state = np.array([
-            sensor1_signal,  # Distance to obstacle from sensor 1
-            sensor2_signal,  # Distance to obstacle from sensor 2
-            sensor3_signal,  # Distance to obstacle from sensor 3
-            car_orientation,  # Orientation towards the goal
-            -car_orientation  # Symmetric orientation (can help with symmetry in learning)
-        ])
-
-        # Return the state as a numpy array
-        return state
-
-    
-    # def serve_target(self):
-    #     self.target.center = self.center
-
     def update(self, dt):
-
-        global brain
-        global last_reward
-        global scores
-        global last_distance
-        global goal_x
-        global goal_y
-        global longueur
-        global largeur
-        # global swap
-        
+        global brain, replay_buffer
+        global new_reward #last_reward
+        global scores, last_distance
+        global goal_x, goal_y, longueur, largeur
+        global is_train
 
         longueur = self.width
         largeur = self.height
-        
-        # for T3D
-        self.car.start_event.wait()
-        if done == True:
-            reset = self.car.reset_q.get()
-            if reset == True:
-                print("first_update is set to True")
-                first_update = True
-				
-            (mode, train_episode_num, eval_episode_num) = self.car.mode_q.get()
-            print("mode: ", mode, " train_episode_num: ",  train_episode_num, " eval_episode_num:", eval_episode_num ) 
-            if mode == "Train":
-                max_steps = 2500
-                # traversal_log = train_traversal_log
-            elif mode == "Eval": 
-                max_steps = 500
-                # traversal_log = eval_traversal_log
-            else:
-                max_steps = 2500
-                # traversal_log = full_eval_traversal_log				
-        
         if first_update:
             init()
 
+        # Reinitialize car position every 1000 timesteps
+        if (self.total_timesteps < initial_buffer and 
+        self.total_timesteps % reset_car_after == 0):
+            self.serve_car()
+
+        # Get current state
         xx = goal_x - self.car.x
         yy = goal_y - self.car.y
-        orientation = Vector(*self.car.velocity).angle((xx,yy))/180.
-        last_signal = [self.car.signal1, self.car.signal2, self.car.signal3, orientation, -orientation]
-        # For T3D
-        # action = brain.update(last_reward, last_signal)
-        # scores.append(brain.score())
-        # rotation = action2rotation[action]
-        action_array = self.car.action_q.get()
-        rotation = action_array[0]
+        orientation = Vector(*self.car.velocity).angle((xx, yy)) / 180.
+        # last_signal = [self.car.signal1, self.car.signal2, self.car.signal3, orientation, -orientation]
+        new_signal = [self.car.signal1, self.car.signal2, self.car.signal3, orientation, -orientation]
+        replay_buffer.add((self.last_signal, 
+                           self.last_action,
+                            new_signal, 
+                            self.last_reward, 
+                            self.last_done))
+        # Select action using the TD3 agent
+        # action = brain.select_action(np.array(last_signal))
+        action = brain.select_action(np.array(new_signal))
+        rotation = float(action[0])  # Convert the continuous action to a rotation angle
         self.car.move(rotation)
+
+        self.last_action = action
+        self.last_signal = new_signal 
+        
+
+        # Calculate reward
         distance = np.sqrt((self.car.x - goal_x)**2 + (self.car.y - goal_y)**2)
         
+        # Update visuals
         self.target.pos = (goal_x, goal_y)
-        
         self.ball1.pos = self.car.sensor1
         self.ball2.pos = self.car.sensor2
         self.ball3.pos = self.car.sensor3
-
-
-        if sand[int(self.car.x),int(self.car.y)] > 0:
+        
+        if sand[int(self.car.x), int(self.car.y)] > 0:
             self.car.velocity = Vector(0.5, 0).rotate(self.car.angle)
-            print(1, goal_x, goal_y, distance, int(self.car.x),int(self.car.y), im.read_pixel(int(self.car.x),int(self.car.y)))
-            
-            last_reward = -1
-        else: # otherwise
+            print(1, goal_x, goal_y, distance, rotation, int(self.car.x),int(self.car.y), im.read_pixel(int(self.car.x),int(self.car.y)))
+            # last_reward = -5
+            new_reward = -5
+            # if distance < last_distance:
+            #     new_reward += 1
+        else:
             self.car.velocity = Vector(2, 0).rotate(self.car.angle)
-            last_reward = -0.2
-            print(0, goal_x, goal_y, distance, int(self.car.x),int(self.car.y), im.read_pixel(int(self.car.x),int(self.car.y)))
+            # last_reward = -0.2
+            new_reward = -0.2
+            print(0, goal_x, goal_y, distance, rotation, int(self.car.x),int(self.car.y), im.read_pixel(int(self.car.x),int(self.car.y)))
+
             if distance < last_distance:
-                last_reward = 0.1
-            # else:
-            #     last_reward = last_reward +(-0.2)
+                # last_reward += (1 + 1000/(distance + 0.0001))
+                new_reward += 2 
 
         if self.car.x < 5:
             self.car.x = 5
-            last_reward = -1
+            # last_reward += -2
+            new_reward += -2
         if self.car.x > self.width - 5:
             self.car.x = self.width - 5
-            last_reward = -1
+            # last_reward += -2
+            new_reward += -2
         if self.car.y < 5:
             self.car.y = 5
-            last_reward = -1
+            # last_reward += -2
+            new_reward += -2
         if self.car.y > self.height - 5:
             self.car.y = self.height - 5
-            last_reward = -1
+            # last_reward += -2
+            new_reward += -2
 
         if distance < 25:
+            # new_reward += 5
             random_target = random.choice(targets_list)
             while goal_x == random_target[0] and goal_y == random_target[1]:
                 random_target = random.choice(targets_list)
             goal_x = random_target[0]
             goal_y = random_target[1]
-            
-            # if swap == 1:
-            #     # goal_x = 1420
-            #     # goal_y = 622
-            #     goal_x = 1470
-            #     goal_y = 70
-            #     swap = 0
-            # else:
-            #     # goal_x = 9
-            #     # goal_y = 85
-            #     goal_x = 165
-            #     goal_y = 227
-            #     swap = 1
+        # print(new_reward)
+        self.last_reward = new_reward
+        # Store the transition in replay buffer
+        # new_signal = [self.car.signal1, self.car.signal2, self.car.signal3, orientation, -orientation]
+        done = distance < 25
+        self.last_done = done
+        if done:
+            self.episode_rewards.append(self.episode_last_step_reward)
+            self.episode_last_step_reward = 0
+        else:
+            self.episode_last_step_reward += new_reward            
+        
         last_distance = distance
+        # Train the TD3 agent
+        # if len(replay_buffer.storage) > batch_size:
+        #     brain.train(replay_buffer, batch_size)
+        self.timesteps += 1
+        self.total_timesteps += 1
 
+        if (is_train and 
+            self.total_timesteps > initial_buffer 
+            and self.timesteps % self.update_interval == 0):
+            # print("Training ...")
+            if self.trn_it % 100 == 0:
+                print(f"{self.trn_it} - prev eps rewards: {self.episode_rewards}, curr eps reward {self.episode_last_step_reward}")
+            brain.train(replay_buffer, batch_size=batch_size)
+            self.timesteps = 0
+            self.trn_it += 1
+            if self.trn_it >= self.max_training_iteration: is_train = False
+ 
 # Adding the painting tools
-
 class MyPaintWidget(Widget):
 
     def on_touch_down(self, touch):
@@ -322,7 +326,6 @@ class MyPaintWidget(Widget):
             length = 0
             sand[int(touch.x),int(touch.y)] = 1
             img = PILImage.fromarray(sand.astype("uint8")*255)
-            # img.save("./images/sand.jpg")
             img.save("./images_new/sand.jpg")
 
     def on_touch_move(self, touch):
@@ -334,51 +337,43 @@ class MyPaintWidget(Widget):
             length += np.sqrt(max((x - last_x)**2 + (y - last_y)**2, 2))
             n_points += 1.
             density = n_points/(length)
-            touch.ud['line'].width = int(20 * density + 1)
-            sand[int(touch.x) - 10 : int(touch.x) + 10, int(touch.y) - 10 : int(touch.y) + 10] = 1
-
-            
+            touch.ud['line'].width = int(20*density + 1)
+            sand[int(touch.x)-10:int(touch.x)+10,int(touch.y)-10:int(touch.y)+10] = 1
             last_x = x
             last_y = y
 
 # Adding the API Buttons (clear, save and load)
-
 class CarApp(App):
-    ## for T3D
-    def __init__(self, start_event, reset_q, mode_q, state_q, action_q, next_state_reward_done_tuple_q):
-        super(CarApp, self).__init__()
-        self.start_event = start_event
-        self.reset_q = reset_q
-        self.mode_q = mode_q
-        self.state_q = state_q
-        self.action_q = action_q
-        self.next_state_reward_done_tuple_q = next_state_reward_done_tuple_q
 
     def build(self):
         parent = Game()
-        ## for T3D
-        parent.serve_car(self.start_event, self.reset_q, self.mode_q,
-                         self.state_q, self.action_q, self.next_state_reward_done_tuple_q)
-
+        parent.serve_car(x = 812, y = 560)
         Clock.schedule_interval(parent.update, 1.0/60.0)
         self.painter = MyPaintWidget()
-        clearbtn = Button(text = 'clear')
+        # clearbtn = Button(text = 'clear')
+        # clearbtn.bind(on_release = self.clear_canvas)
+        trnbtn = Button(text = 'train or test')
+        trnbtn.bind(on_release = self.train_test_toggle)
         savebtn = Button(text = 'save', pos = (parent.width, 0))
-        loadbtn = Button(text = 'load', pos = (2 * parent.width, 0))
-        clearbtn.bind(on_release = self.clear_canvas)
         savebtn.bind(on_release = self.save)
+        loadbtn = Button(text = 'load', pos = (2 * parent.width, 0))
         loadbtn.bind(on_release = self.load)
         parent.add_widget(self.painter)
-        parent.add_widget(clearbtn)
+        # parent.add_widget(clearbtn)
+        parent.add_widget(trnbtn)
         parent.add_widget(savebtn)
         parent.add_widget(loadbtn)
         return parent
+    def train_test_toggle(self, obj):
+        global is_train
+        if is_train: is_train = False
+        else: is_train = True
 
     def clear_canvas(self, obj):
         global sand
         self.painter.canvas.clear()
         sand = np.zeros((longueur,largeur))
-
+    
     def save(self, obj):
         print("saving brain...")
         brain.save()
