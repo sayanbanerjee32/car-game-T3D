@@ -48,10 +48,10 @@ replay_buffer = ReplayBuffer(max_size=1e6)
 batch_size = 256
 initial_buffer = 10000
 reset_car_after = 1000
-
+save_interval = 1000
 # num_episodes = 1000x
 # max_timesteps_per_episode = 200
-# save_interval = 50
+
 
 # last_reward = 0
 new_reward = 0
@@ -242,7 +242,7 @@ class Game(Widget):
         
         if sand[int(self.car.x), int(self.car.y)] > 0:
             self.car.velocity = Vector(0.5, 0).rotate(self.car.angle)
-            print(1, goal_x, goal_y, distance, rotation, int(self.car.x),int(self.car.y), im.read_pixel(int(self.car.x),int(self.car.y)))
+            # print(1, goal_x, goal_y, distance, rotation, int(self.car.x),int(self.car.y), im.read_pixel(int(self.car.x),int(self.car.y)))
             # last_reward = -5
             new_reward = -5
             # if distance < last_distance:
@@ -251,7 +251,7 @@ class Game(Widget):
             self.car.velocity = Vector(2, 0).rotate(self.car.angle)
             # last_reward = -0.2
             new_reward = -0.2
-            print(0, goal_x, goal_y, distance, rotation, int(self.car.x),int(self.car.y), im.read_pixel(int(self.car.x),int(self.car.y)))
+            # print(0, goal_x, goal_y, distance, rotation, int(self.car.x),int(self.car.y), im.read_pixel(int(self.car.x),int(self.car.y)))
 
             if distance < last_distance:
                 # last_reward += (1 + 1000/(distance + 0.0001))
@@ -304,12 +304,16 @@ class Game(Widget):
             self.total_timesteps > initial_buffer 
             and self.timesteps % self.update_interval == 0):
             # print("Training ...")
-            if self.trn_it % 100 == 0:
-                print(f"{self.trn_it} - prev eps rewards: {self.episode_rewards}, curr eps reward {self.episode_last_step_reward}")
+
             brain.train(replay_buffer, batch_size=batch_size)
+            if self.trn_it % save_interval == 0:
+                print(f"{self.trn_it} - prev eps rewards: {self.episode_rewards}, curr eps reward {self.episode_last_step_reward}")
+                brain.save()
             self.timesteps = 0
             self.trn_it += 1
-            if self.trn_it >= self.max_training_iteration: is_train = False
+            if self.trn_it >= self.max_training_iteration: 
+                is_train = False
+                brain.save()
  
 # Adding the painting tools
 class MyPaintWidget(Widget):
