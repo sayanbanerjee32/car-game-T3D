@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import random
-import time
+import datetime
 
 # Importing the Kivy packages
 from kivy.app import App
@@ -41,8 +41,6 @@ state_dim = 5
 action_dim = 1
 max_action = 5  # Example max action value, adjust as necessary
 brain = TD3(state_dim, action_dim, max_action)
-
-replay_buffer = ReplayBuffer(max_size=1e6)
 
 # Hyperparameters
 batch_size = 256
@@ -165,7 +163,7 @@ class Game(Widget):
     
     def __init__(self, **kwargs):
         super(Game, self).__init__(**kwargs)
-        # self.replay_buffer = ReplayBuffer()
+        self.replay_buffer = ReplayBuffer(max_size=50000)
         self.timesteps = 0
         self.total_timesteps = 0
         self.update_interval = 1  # Update the policy every after every batch
@@ -175,7 +173,7 @@ class Game(Widget):
         self.last_reward = 0
         self.last_done = False
 
-        self.max_training_iteration = 500000
+        self.max_training_iteration = 100000
         self.trn_it = 0
         self.episode_last_step_reward = 0
         self.episode_rewards = []
@@ -194,7 +192,7 @@ class Game(Widget):
         self.car.velocity = Vector(6, 0)
     
     def update(self, dt):
-        global brain, replay_buffer
+        global brain
         global new_reward #last_reward
         global scores, last_distance
         global goal_x, goal_y, longueur, largeur
@@ -216,7 +214,7 @@ class Game(Widget):
         orientation = Vector(*self.car.velocity).angle((xx, yy)) / 180.
         # last_signal = [self.car.signal1, self.car.signal2, self.car.signal3, orientation, -orientation]
         new_signal = [self.car.signal1, self.car.signal2, self.car.signal3, orientation, -orientation]
-        replay_buffer.add((self.last_signal, 
+        self.replay_buffer.add((self.last_signal, 
                            self.last_action,
                             new_signal, 
                             self.last_reward, 
@@ -305,9 +303,10 @@ class Game(Widget):
             and self.timesteps % self.update_interval == 0):
             # print("Training ...")
 
-            brain.train(replay_buffer, batch_size=batch_size)
+            brain.train(self.replay_buffer, batch_size=batch_size)
             if self.trn_it % save_interval == 0:
-                print(f"{self.trn_it} - prev eps rewards: {self.episode_rewards}, curr eps reward {self.episode_last_step_reward}")
+                print(f"{datetime.datetime.now()}: {self.trn_it} - prev eps rewards: {self.episode_rewards}, 
+                      curr eps reward {self.episode_last_step_reward}, storage size {len(self.replay_buffer.storage)}")
                 brain.save()
             self.timesteps = 0
             self.trn_it += 1

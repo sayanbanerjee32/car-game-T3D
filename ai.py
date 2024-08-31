@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import copy
+import random
 
 # Selecting the device (CPU or GPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -57,28 +58,33 @@ class Critic(nn.Module):
 
 # Replay Buffer
 class ReplayBuffer:
-    def __init__(self, max_size=1e6):
+    def __init__(self, max_size=1e6, 
+                 positive_sample_ratio = 0.7, postive_sample_threshold = -0.2):
         self.storage = []
         self.max_size = max_size
         self.ptr = 0
+        self.positive_sample_ratio = positive_sample_ratio
+        self.postive_sample_threshold = postive_sample_threshold
 
     def add(self, transition):
-        if len(self.storage) == self.max_size:
-            self.storage[int(self.ptr)] = transition
-            self.ptr = (self.ptr + 1) % self.max_size
-        else:
-            self.storage.append(transition)
-            self.ptr = (self.ptr + 1) % self.max_size
+        if (transition[-2] >= self.postive_sample_threshold or 
+            random.random() < (1 - self.positive_sample_ratio)):
+            if len(self.storage) == self.max_size:
+                self.storage[int(self.ptr)] = transition
+                self.ptr = (self.ptr + 1) % self.max_size
+            else:
+                self.storage.append(transition)
+                self.ptr = (self.ptr + 1) % self.max_size
 
     def sample(self, batch_size):
         # ind = np.random.randint(0, len(self.storage), size=batch_size)      
         storage_copy = copy.deepcopy(self.storage)
         np.random.shuffle(storage_copy)
         # Get indices of tuples where the last element is positive
-        pos_indices = [i for i, t in enumerate(storage_copy) if t[-2] >= -0.2]
+        pos_indices = [i for i, t in enumerate(storage_copy) if t[-2] >= self.postive_sample_threshold]
         # print(f"postive samples:{len(pos_indices)}")
-        if int(batch_size * 0.7) < len(pos_indices):
-            pos_ind_ind = np.random.randint(0, len(pos_indices), size = int(batch_size * 0.7))
+        if int(batch_size * self.positive_sample_ratio) < len(pos_indices):
+            pos_ind_ind = np.random.randint(0, len(pos_indices), size = int(batch_size * self.positive_sample_ratio))
             pos_ind =  [pos_indices[i] for i in pos_ind_ind]
         else: pos_ind = pos_indices
         remaining_list_ind = [i for i, t in enumerate(storage_copy) if i not in pos_ind]
