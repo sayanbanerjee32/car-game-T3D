@@ -305,8 +305,7 @@ class Game(Widget):
 
             brain.train(self.replay_buffer, batch_size=batch_size)
             if self.trn_it % save_interval == 0:
-                print(f"{datetime.datetime.now()}: {self.trn_it} - prev eps rewards: {self.episode_rewards}, 
-                      curr eps reward {self.episode_last_step_reward}, storage size {len(self.replay_buffer.storage)}")
+                print(f"{datetime.datetime.now()}: {self.trn_it} - prev eps rewards: {self.episode_rewards}, curr eps reward {self.episode_last_step_reward}, storage size {len(self.replay_buffer.storage)}")
                 brain.save()
             self.timesteps = 0
             self.trn_it += 1
