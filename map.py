@@ -44,7 +44,7 @@ brain = TD3(state_dim, action_dim, max_action)
 
 # Hyperparameters
 batch_size = 256
-initial_buffer = 10000
+initial_buffer = 20000
 reset_car_after = 1000
 save_interval = 1000
 # num_episodes = 1000x
