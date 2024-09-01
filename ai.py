@@ -67,8 +67,8 @@ class ReplayBuffer:
         self.postive_sample_threshold = postive_sample_threshold
 
     def add(self, transition):
-        if (transition[-2] >= self.postive_sample_threshold or 
-            random.random() < (1 - self.positive_sample_ratio)):
+        if ((transition[-2] >= self.postive_sample_threshold) or 
+            (random.random() < (1 - self.positive_sample_ratio))):
             if len(self.storage) == self.max_size:
                 self.storage[int(self.ptr)] = transition
                 self.ptr = (self.ptr + 1) % self.max_size
