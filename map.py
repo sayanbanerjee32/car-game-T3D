@@ -163,7 +163,7 @@ class Game(Widget):
     
     def __init__(self, **kwargs):
         super(Game, self).__init__(**kwargs)
-        self.replay_buffer = ReplayBuffer(max_size=50000)
+        self.replay_buffer = ReplayBuffer(max_size=100000)
         self.timesteps = 0
         self.total_timesteps = 0
         self.update_interval = 1  # Update the policy every after every batch
