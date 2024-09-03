@@ -93,13 +93,13 @@ class ReplayBuffer:
 
 
     def sample(self, batch_size):
-        ind = np.random.randint(0, len(self.storage), size=batch_size)      
+        # ind = np.random.randint(0, len(self.storage), size=batch_size)      
         # storage_copy = copy.deepcopy(self.storage)
         # np.random.shuffle(storage_copy)
         # Get indices of tuples where the last element is positive
         pos_indices = [i for i, t in enumerate(self.storage) if t[-2] >= self.postive_sample_threshold]
-        print(f"postive samples:{len(pos_indices)}")
-        if int(batch_size * self.positive_sample_ratio) < len(pos_indices):
+        # print(f"postive samples:{len(pos_indices)}")
+        if len(pos_indices) > int(batch_size * self.positive_sample_ratio):
             pos_ind_ind = np.random.randint(0, len(pos_indices), size = int(batch_size * self.positive_sample_ratio))
             pos_ind =  [pos_indices[i] for i in pos_ind_ind]
         else: pos_ind = pos_indices
@@ -127,8 +127,9 @@ class ReplayBuffer:
         # print(torch.FloatTensor(np.array(batch_rewards)).to(device).unsqueeze(1).size())
         # print(torch.FloatTensor(np.array(batch_dones)).to(device).unsqueeze(1).size())
         
-        # delete negative samples
-        delete(rand_ind)
+        # # delete negative samples
+        # if len(remaining_list_ind)/ len(pos_indices) > 100 :
+        #     self.delete(rand_ind.tolist())
 
         return (
             torch.FloatTensor(np.array(batch_states)).to(device),
