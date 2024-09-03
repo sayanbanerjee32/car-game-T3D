@@ -163,7 +163,7 @@ class Game(Widget):
     
     def __init__(self, **kwargs):
         super(Game, self).__init__(**kwargs)
-        self.replay_buffer = ReplayBuffer(max_size=100000)
+        self.replay_buffer = ReplayBuffer(max_size=500000)
         self.timesteps = 0
         self.total_timesteps = 0
         self.update_interval = 1  # Update the policy every after every batch
@@ -173,7 +173,7 @@ class Game(Widget):
         self.last_reward = 0
         self.last_done = False
 
-        self.max_training_iteration = 100000
+        self.max_training_iteration = 500000
         self.trn_it = 0
         self.episode_last_step_reward = 0
         self.episode_rewards = []
@@ -306,7 +306,7 @@ class Game(Widget):
             brain.train(self.replay_buffer, batch_size=batch_size)
             if self.trn_it % save_interval == 0:
                 print(f"{datetime.datetime.now()}: {self.trn_it} - prev eps rewards: {self.episode_rewards}, curr eps reward {self.episode_last_step_reward}")
-                print(f"storage size {len(self.replay_buffer.storage)}, positive samples {len([i for i, t in enumerate(self.replay_buffer.storage) if t[-2] >= self.replay_buffer.postive_sample_threshold])}")
+                print(f"storage size {len(self.replay_buffer.storage)}, pointer {self.replay_buffer.ptr},positive samples {len([i for i, t in enumerate(self.replay_buffer.storage) if t[-2] >= self.replay_buffer.postive_sample_threshold])}")
                 brain.save()
             self.timesteps = 0
             self.trn_it += 1
