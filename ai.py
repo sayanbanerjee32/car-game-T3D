@@ -59,7 +59,7 @@ class Critic(nn.Module):
 # Replay Buffer
 class ReplayBuffer:
     def __init__(self, max_size=1e6, 
-                 positive_sample_ratio = 0.5, postive_sample_threshold = 0):
+                 positive_sample_ratio = 0.7, postive_sample_threshold = 0):
         self.storage = []
         # self.pos_storage = []
         # self.neg_storage = []
@@ -86,21 +86,28 @@ class ReplayBuffer:
         #     self.storage.append(transition)
         #     self.ptr = (self.ptr + 1) % self.max_size
 
+    def delete(self, indices):
+        for index in sorted(indices, reverse=True):
+            del self.storage[index]
+            self.ptr = (self.ptr - 1) % self.max_size
+
+
     def sample(self, batch_size):
         ind = np.random.randint(0, len(self.storage), size=batch_size)      
         # storage_copy = copy.deepcopy(self.storage)
         # np.random.shuffle(storage_copy)
         # Get indices of tuples where the last element is positive
         pos_indices = [i for i, t in enumerate(self.storage) if t[-2] >= self.postive_sample_threshold]
-        # print(f"postive samples:{len(pos_indices)}")
+        print(f"postive samples:{len(pos_indices)}")
         if int(batch_size * self.positive_sample_ratio) < len(pos_indices):
             pos_ind_ind = np.random.randint(0, len(pos_indices), size = int(batch_size * self.positive_sample_ratio))
             pos_ind =  [pos_indices[i] for i in pos_ind_ind]
         else: pos_ind = pos_indices
-        remaining_list_ind = [i for i, t in enumerate(self.storage) if i not in pos_ind]
+        remaining_list_ind = [i for i, t in enumerate(self.storage) if i not in pos_indices]
         rand_ind_ind = np.random.randint(0, len(remaining_list_ind), size = batch_size - len(pos_ind))
         rand_ind = np.array([remaining_list_ind[i] for i in rand_ind_ind])
-        
+        # print(f"postive samples:{len(pos_ind)}")
+        # print(f"postive samples:{pos_ind}")
         ind = np.concatenate((pos_ind ,rand_ind))
         np.random.shuffle(ind)
         batch_states, batch_actions, batch_next_states, batch_rewards, batch_dones = [], [], [], [], []
@@ -120,6 +127,9 @@ class ReplayBuffer:
         # print(torch.FloatTensor(np.array(batch_rewards)).to(device).unsqueeze(1).size())
         # print(torch.FloatTensor(np.array(batch_dones)).to(device).unsqueeze(1).size())
         
+        # delete negative samples
+        delete(rand_ind)
+
         return (
             torch.FloatTensor(np.array(batch_states)).to(device),
             torch.FloatTensor(np.array(batch_actions)).to(device),
