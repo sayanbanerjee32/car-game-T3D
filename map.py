@@ -241,36 +241,34 @@ class Game(Widget):
         if sand[int(self.car.x), int(self.car.y)] > 0:
             self.car.velocity = Vector(0.5, 0).rotate(self.car.angle)
             # print(1, goal_x, goal_y, distance, rotation, int(self.car.x),int(self.car.y), im.read_pixel(int(self.car.x),int(self.car.y)))
-            # last_reward = -5
-            new_reward = -5
-            # if distance < last_distance:
-            #     new_reward += 1
+            # new_reward = -5
+            new_reward = -1
+            
         else:
             self.car.velocity = Vector(2, 0).rotate(self.car.angle)
-            # last_reward = -0.2
             new_reward = -0.2
             # print(0, goal_x, goal_y, distance, rotation, int(self.car.x),int(self.car.y), im.read_pixel(int(self.car.x),int(self.car.y)))
 
             if distance < last_distance:
-                # last_reward += (1 + 1000/(distance + 0.0001))
-                new_reward += 2 
+                # new_reward += 2 
+                new_reward = 0.1
 
         if self.car.x < 5:
             self.car.x = 5
-            # last_reward += -2
-            new_reward += -2
+            # new_reward += -2
+            new_reward = -1
         if self.car.x > self.width - 5:
             self.car.x = self.width - 5
-            # last_reward += -2
-            new_reward += -2
+            # new_reward += -2
+            new_reward = -1
         if self.car.y < 5:
             self.car.y = 5
-            # last_reward += -2
-            new_reward += -2
+            # new_reward += -2
+            new_reward = -1
         if self.car.y > self.height - 5:
             self.car.y = self.height - 5
-            # last_reward += -2
-            new_reward += -2
+            # new_reward += -2
+            new_reward = -1
 
         if distance < 25:
             # new_reward += 5
@@ -302,7 +300,7 @@ class Game(Widget):
             self.total_timesteps > initial_buffer 
             and self.timesteps % self.update_interval == 0):
             # print("Training ...")
-
+            # print(f"storage size {len(self.replay_buffer.storage)}, pointer {self.replay_buffer.ptr},positive samples {len([i for i, t in enumerate(self.replay_buffer.storage) if t[-2] >= self.replay_buffer.postive_sample_threshold])}")
             brain.train(self.replay_buffer, batch_size=batch_size)
             if self.trn_it % save_interval == 0:
                 print(f"{datetime.datetime.now()}: {self.trn_it} - prev eps rewards: {self.episode_rewards}, curr eps reward {self.episode_last_step_reward}")
