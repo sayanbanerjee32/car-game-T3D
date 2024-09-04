@@ -70,16 +70,16 @@ class ReplayBuffer:
         self.postive_sample_threshold = postive_sample_threshold
 
     def add(self, transition):
-        if ((transition[-2] >= self.postive_sample_threshold) or 
-            (random.random() < (1 - self.positive_sample_ratio))):
-            if len(self.storage) == self.max_size:
-                self.storage[int(self.ptr)] = transition
-                self.ptr = (self.ptr + 1) % self.max_size
-            else:
-                self.storage.append(transition)
-                self.ptr = (self.ptr + 1) % self.max_size
+        # if ((transition[-2] >= self.postive_sample_threshold) or 
+        #     (random.random() < (1 - self.positive_sample_ratio))):
+        if len(self.storage) == self.max_size:
+            self.storage[int(self.ptr)] = transition
+            self.ptr = (self.ptr + 1) % self.max_size
+        else:
+            self.storage.append(transition)
+            self.ptr = (self.ptr + 1) % self.max_size
 
-        # if len(self.pos_storage) +  == self.max_size:
+        # if len(self.pos_storage) == self.max_size:
         #     self.storage[int(self.ptr)] = transition
         #     self.ptr = (self.ptr + 1) % self.max_size
         # else:
@@ -127,9 +127,9 @@ class ReplayBuffer:
         # print(torch.FloatTensor(np.array(batch_rewards)).to(device).unsqueeze(1).size())
         # print(torch.FloatTensor(np.array(batch_dones)).to(device).unsqueeze(1).size())
         
-        # # delete negative samples
-        # if len(remaining_list_ind)/ len(pos_indices) > 100 :
-        #     self.delete(rand_ind.tolist())
+        # delete negative samples
+        if len(remaining_list_ind)/ len(pos_indices) > 25 :
+            self.delete(rand_ind.tolist())
 
         return (
             torch.FloatTensor(np.array(batch_states)).to(device),
