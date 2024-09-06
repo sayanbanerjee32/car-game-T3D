@@ -126,10 +126,16 @@ class ReplayBuffer:
         # print(torch.FloatTensor(np.array(batch_next_states)).to(device).size())
         # print(torch.FloatTensor(np.array(batch_rewards)).to(device).unsqueeze(1).size())
         # print(torch.FloatTensor(np.array(batch_dones)).to(device).unsqueeze(1).size())
-        
+        # pos_dict = {i:self.storage[i][-2] for i in pos_ind}
+        # neg_dict = {i:self.storage[i][-2] for i in rand_ind}
+        # print(f"pos rewards: {pos_dict}")
+        # print(f"neg rewards: {neg_dict}")
+
         # delete negative samples
-        if len(remaining_list_ind)/ len(pos_indices) > 25 :
-            self.delete(rand_ind.tolist())
+        if len(remaining_list_ind)/ len(pos_indices) > 10 :
+            # print(f"indices that will be in order :{ sorted(rand_ind.tolist(), reverse=True)}")
+            print(f"Deleting {len(list(set(rand_ind.tolist())))} records")
+            self.delete(list(set(rand_ind.tolist())))
 
         return (
             torch.FloatTensor(np.array(batch_states)).to(device),
