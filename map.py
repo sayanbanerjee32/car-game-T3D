@@ -43,7 +43,7 @@ max_action = 5  # Example max action value, adjust as necessary
 brain = TD3(state_dim, action_dim, max_action)
 
 # Hyperparameters
-batch_size = 256
+batch_size = 1024
 initial_buffer = 20000
 reset_car_after = 1000
 save_interval = 1000
