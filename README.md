@@ -13,13 +13,27 @@ There are 3 destinations on the map which are randomly selected in each turn and
 
 ![alt text](images_new/target.png)   
 
-## TD3 model training tricks 
+## TD3 Model Training Techniques
 
-One of primary difference of in this model is that the action space in continuous. i.e. instead of the model deciding on one of available options as next action, model will predict a value that will be directly used as action. In this case, the model predicts are angle value that is directly used to rotate the car (instead of selecting an angle from a range of available options). Therefore, the training of this model comparatively difficult. The TD3 model training involved certain tricks and configurations. Some of them are described below. 
-1. The replay memory is set to 20k steps so that we have enough examples of positive rewards (when car is moving towards the target and on the road) before it starts training. 
-2. The car is initialised at different random places after every 1000 steps in that first 20k steps. These random points are selected after dividing the map in 12 blocks (6 columns and 2 rows). 
-3. It is ensured that each training batch consists of more positive examples than negative examples. 
-4. In order to make each training iteration faster, if number of negative examples are 10 times more than the number of positive examples in replay memory, then used negative example from the batch are deleted from replay memory 
+A key feature of this model is its continuous action space. Instead of selecting from predefined options, the model predicts a continuous value used directly as an action. Specifically, it predicts an angle value to rotate the car, rather than choosing from a set of discrete angles. This continuous action space makes the training process more challenging. To address this, we've implemented several techniques and configurations:
+
+1. **Replay Buffer**: We use a large replay buffer (500,000 samples) to store experiences. This ensures a diverse set of samples for training, including both positive and negative rewards.
+
+2. **Initial Exploration**: The model starts training only after the replay buffer has collected a sufficient number of samples (defined by `initial_buffer`). This allows for a good mix of experiences before learning begins.
+
+3. **Stuck Detection and Reset**: If the car remains in the same position for too long (defined by `stuck_patience`), it's considered stuck and is reset to a new random position. This prevents the agent from getting trapped in suboptimal states.
+
+4. **Balanced Sampling**: Our `ReplayBuffer` class is designed to maintain a balance between positive and negative examples. It uses a `positive_sample_ratio` to ensure that each training batch contains a good mix of rewarding and challenging experiences.
+
+5. **Adaptive Exploration**: The TD3 algorithm uses noise for exploration, which is gradually reduced over time. This allows for more random actions initially and more exploitative actions as the agent learns.
+
+6. **Periodic Model Saving**: The model is saved at regular intervals (defined by `save_interval`). This allows for recovery of the best-performing model if training degrades over time.
+
+7. **Flexible Running Modes**: The system supports different running modes (train, load, inference) controlled by the `RUN_MODE` environment variable. This allows for easy switching between training and evaluation.
+
+8. **Dynamic Goal Setting**: When the car reaches a goal, a new random goal is set. This continually challenges the agent and promotes learning of general navigation skills rather than fixed routes.
+
+These techniques work together to create a robust learning environment for the TD3 agent, allowing it to effectively learn in a continuous action space despite the inherent challenges.
 
 ## YouTube Video of the inference simulation 
  

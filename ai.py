@@ -58,84 +58,94 @@ class Critic(nn.Module):
 
 # Replay Buffer
 class ReplayBuffer:
-    def __init__(self, max_size=1e6, 
-                 positive_sample_ratio = 0.7, postive_sample_threshold = 0):
+    def __init__(self, max_size=1e6, positive_sample_ratio=0.7, positive_sample_threshold=0):
         self.storage = []
-        # self.pos_storage = []
-        # self.neg_storage = []
         self.max_size = max_size
         self.ptr = 0
-        # self.pos_ptr = 0
         self.positive_sample_ratio = positive_sample_ratio
-        self.postive_sample_threshold = postive_sample_threshold
+        self.positive_sample_threshold = positive_sample_threshold
+        self.deletion_interval = 10000  # Delete every 10000 samples
+        self.sample_count = 0
+
+        # Initialize running statistics for rewards
+        self.running_mean = None
+        self.running_variance = None
+        self.alpha = 0.99  # Smoothing factor for updating mean and variance
+        self.update_interval = 1000  # Update stats every 1000 samples
 
     def add(self, transition):
-        # if ((transition[-2] >= self.postive_sample_threshold) or 
-        #     (random.random() < (1 - self.positive_sample_ratio))):
         if len(self.storage) == self.max_size:
             self.storage[int(self.ptr)] = transition
             self.ptr = (self.ptr + 1) % self.max_size
         else:
             self.storage.append(transition)
-            self.ptr = (self.ptr + 1) % self.max_size
+        self.sample_count += 1
 
-        # if len(self.pos_storage) == self.max_size:
-        #     self.storage[int(self.ptr)] = transition
-        #     self.ptr = (self.ptr + 1) % self.max_size
-        # else:
-        #     self.storage.append(transition)
-        #     self.ptr = (self.ptr + 1) % self.max_size
+    def update_running_stats(self, rewards):
+        if self.running_mean is None:
+            self.running_mean = np.mean(rewards)
+            self.running_variance = np.var(rewards)
+        else:
+            new_mean = np.mean(rewards)
+            new_variance = np.var(rewards)
+            self.running_mean = self.alpha * self.running_mean + (1 - self.alpha) * new_mean
+            self.running_variance = self.alpha * self.running_variance + (1 - self.alpha) * new_variance
 
-    def delete(self, indices):
-        for index in sorted(indices, reverse=True):
-            del self.storage[index]
-            self.ptr = (self.ptr - 1) % self.max_size
+    def normalize_reward(self, reward):
+        if self.running_mean is None:
+            return reward
+        normalized = (reward - self.running_mean) / (np.sqrt(self.running_variance) + 1e-8)
+        return np.clip(normalized, -5, 5)  # Clip to [-5, 5]
 
+    def update_positive_threshold(self):
+        if len(self.storage) > 1000:  # Only update after sufficient samples
+            rewards = [t[-2] for t in self.storage]
+            self.positive_sample_threshold = np.percentile(rewards, 70)  # Set threshold at 70th percentile
+
+    def delete_negative_samples(self):
+        pos_indices = [i for i, t in enumerate(self.storage) if t[-2] >= self.positive_sample_threshold]
+        neg_indices = [i for i in range(len(self.storage)) if i not in pos_indices]
+        
+        # Keep all positive samples and randomly select negative samples
+        keep_neg = np.random.choice(neg_indices, size=min(len(neg_indices), int(len(pos_indices) / self.positive_sample_ratio) - len(pos_indices)), replace=False)
+        keep_indices = sorted(list(pos_indices) + list(keep_neg))
+        
+        self.storage = [self.storage[i] for i in keep_indices]
+        self.ptr = len(self.storage) % self.max_size
+        print(f"Deleted {len(self.storage) - len(keep_indices)} negative samples")
 
     def sample(self, batch_size):
-        # ind = np.random.randint(0, len(self.storage), size=batch_size)      
-        # storage_copy = copy.deepcopy(self.storage)
-        # np.random.shuffle(storage_copy)
-        # Get indices of tuples where the last element is positive
-        pos_indices = [i for i, t in enumerate(self.storage) if t[-2] >= self.postive_sample_threshold]
-        # print(f"postive samples:{len(pos_indices)}")
-        if len(pos_indices) > int(batch_size * self.positive_sample_ratio):
-            pos_ind_ind = np.random.randint(0, len(pos_indices), size = int(batch_size * self.positive_sample_ratio))
-            pos_ind =  [pos_indices[i] for i in pos_ind_ind]
-        else: pos_ind = pos_indices
-        remaining_list_ind = [i for i, t in enumerate(self.storage) if i not in pos_indices]
-        rand_ind_ind = np.random.randint(0, len(remaining_list_ind), size = batch_size - len(pos_ind))
-        rand_ind = np.array([remaining_list_ind[i] for i in rand_ind_ind])
-        # print(f"postive samples:{len(pos_ind)}")
-        # print(f"postive samples:{pos_ind}")
-        ind = np.concatenate((pos_ind ,rand_ind))
+        if self.sample_count >= self.deletion_interval:
+            self.update_positive_threshold()
+            self.delete_negative_samples()
+            self.sample_count = 0
+
+        pos_indices = [i for i, t in enumerate(self.storage) if t[-2] >= self.positive_sample_threshold]
+        neg_indices = [i for i in range(len(self.storage)) if i not in pos_indices]
+
+        n_pos = min(int(batch_size * self.positive_sample_ratio), len(pos_indices))
+        n_neg = batch_size - n_pos
+
+        pos_samples = np.random.choice(pos_indices, size=n_pos, replace=False)
+        neg_samples = np.random.choice(neg_indices, size=n_neg, replace=False)
+
+        ind = np.concatenate([pos_samples, neg_samples])
         np.random.shuffle(ind)
+
         batch_states, batch_actions, batch_next_states, batch_rewards, batch_dones = [], [], [], [], []
 
         for i in ind:
             state, action, next_state, reward, done = self.storage[i]
-            # state, action, next_state, reward, done = storage_copy[i]
+            
+            # Update running stats and normalize reward
+            self.update_running_stats([reward])
+            normalized_reward = self.normalize_reward(reward)
+            
             batch_states.append(np.array(state, copy=False))
             batch_actions.append(np.array(action, copy=False))
             batch_next_states.append(np.array(next_state, copy=False))
-            batch_rewards.append(np.array(reward, copy=False))
+            batch_rewards.append(np.array(normalized_reward, copy=False))  # Use normalized reward
             batch_dones.append(np.array(done, copy=False))
-
-        # print(torch.FloatTensor(np.array(batch_states)).to(device).size())
-        # print(torch.FloatTensor(np.array(batch_actions)).to(device).size())
-        # print(torch.FloatTensor(np.array(batch_next_states)).to(device).size())
-        # print(torch.FloatTensor(np.array(batch_rewards)).to(device).unsqueeze(1).size())
-        # print(torch.FloatTensor(np.array(batch_dones)).to(device).unsqueeze(1).size())
-        # pos_dict = {i:self.storage[i][-2] for i in pos_ind}
-        # neg_dict = {i:self.storage[i][-2] for i in rand_ind}
-        # print(f"pos rewards: {pos_dict}")
-        # print(f"neg rewards: {neg_dict}")
-
-        # delete negative samples
-        if len(remaining_list_ind)/ len(pos_indices) > 10 :
-            # print(f"indices that will be in order :{ sorted(rand_ind.tolist(), reverse=True)}")
-            print(f"Deleting {len(list(set(rand_ind.tolist())))} records")
-            self.delete(list(set(rand_ind.tolist())))
 
         return (
             torch.FloatTensor(np.array(batch_states)).to(device),
@@ -150,26 +160,28 @@ class TD3:
     def __init__(self, state_dim, action_dim, max_action):
         self.actor = Actor(state_dim, action_dim, max_action).to(device)
         self.actor_target = copy.deepcopy(self.actor)
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=3e-4)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=1e-4)  # Reduced from 3e-4
 
         self.critic = Critic(state_dim, action_dim).to(device)
         self.critic_target = copy.deepcopy(self.critic)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=3e-4)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=1e-4)  # Reduced from 3e-4
 
         self.max_action = max_action
         self.action_dim = action_dim
-        # self.discount = 0.99
-        # self.tau = 0.005
-
-        # self.policy_noise = 0.2
-        # self.noise_clip = 0.5
-        # self.policy_freq = 2
 
         self.total_it = 0
+        self.exploration_noise = 0.1
+        self.exploration_decay = 0.9999
+        self.training = True  # Add this line
 
     def select_action(self, state):
         state = torch.FloatTensor(state.reshape(1, -1)).to(device)
-        return self.actor(state).cpu().data.numpy().flatten()
+        action = self.actor(state).cpu().data.numpy().flatten()
+        if self.training:
+            action = action + np.random.normal(0, self.exploration_noise, size=self.action_dim)
+            self.exploration_noise *= self.exploration_decay
+            self.exploration_noise = max(0.01, self.exploration_noise)  # Set a minimum exploration noise
+        return np.clip(action, -self.max_action, self.max_action)
 
     def train(self, replay_buffer, batch_size=100,
               discount=0.99, tau=0.005, policy_noise=0.2, noise_clip=0.5, policy_freq=2):
@@ -226,5 +238,17 @@ class TD3:
         torch.save(self.critic.state_dict(), filename + "_critic.pth")
 
     def load(self, filename="model"):
-        self.actor.load_state_dict(torch.load(filename + "_actor.pth"))
-        self.critic.load_state_dict(torch.load(filename + "_critic.pth"))
+        try:
+            self.actor.load_state_dict(torch.load(filename + "_actor.pth"))
+            self.critic.load_state_dict(torch.load(filename + "_critic.pth"))
+            print("Model loaded successfully.")
+        except FileNotFoundError:
+            print("No existing model found. Starting with a new model.")
+        except Exception as e:
+            print(f"An error occurred while loading the model: {e}")
+
+    def train_mode(self):
+        self.training = True
+
+    def eval_mode(self):
+        self.training = False
