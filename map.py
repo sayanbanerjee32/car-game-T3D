@@ -193,10 +193,10 @@ class Game(Widget):
                                                    initialization_grid)
         self.starting_positions = random_location #+ targets_list
 
-        # # Add stuck counter and last position
-        # self.last_position = None
-        # self.stuck_counter = 0
-        # self.stuck_patience = 100  # Number of updates to wait before resetting
+        # Add stuck counter and last position
+        self.last_position = None
+        self.stuck_counter = 0
+        self.stuck_patience = 100  # Number of updates to wait before resetting
 
     def serve_car(self, x = None, y = None):
         if x is not None and y is not None:
@@ -204,8 +204,8 @@ class Game(Widget):
         else:
             self.car.center = random.choice(self.starting_positions)
         self.car.velocity = Vector(6, 0)
-        # self.last_position = self.car.pos
-        # self.stuck_counter = 0
+        self.last_position = np.array(self.car.pos).copy()
+        self.stuck_counter = 0
 
     def update(self, dt):
         global brain, new_reward, scores, goal_x, goal_y, longueur, largeur, is_train, RUN_MODE
@@ -238,18 +238,19 @@ class Game(Widget):
         self.last_action = action
         self.last_signal = new_signal 
 
-        # # Check if car is stuck (after moving)
-        # current_position = self.car.pos
-        # if self.last_position == current_position:
-        #     self.stuck_counter += 1
-        # else:
-        #     self.stuck_counter = 0
-        # self.last_position = current_position
+        # Check if car is stuck (after moving)
+        current_position = np.array(self.car.pos)
+        if self.last_position is not None:
+            if np.allclose(self.last_position, current_position, atol=1e-5):
+                self.stuck_counter += 1
+            else:
+                self.stuck_counter = 0
+        self.last_position = current_position.copy()
 
-        # # If car is stuck for too long, reset its position
-        # if self.stuck_counter > self.stuck_patience:
-        #     new_position = random.choice(self.starting_positions)
-        #     self.serve_car(x=new_position[0], y=new_position[1])
+        # If car is stuck for too long, reset its position
+        if self.stuck_counter > self.stuck_patience:
+            new_position = random.choice(self.starting_positions)
+            self.serve_car(x=new_position[0], y=new_position[1])
 
         # Calculate reward
         distance = np.sqrt((self.car.x - goal_x)**2 + (self.car.y - goal_y)**2)
@@ -285,7 +286,10 @@ class Game(Widget):
         if (is_train and #RUN_MODE != 'inference' and 
             self.total_timesteps > initial_buffer and 
             self.timesteps % self.update_interval == 0):
-            brain.train(self.replay_buffer, batch_size=batch_size)
+            try:
+                brain.train(self.replay_buffer, batch_size=batch_size)
+            except Exception as e:
+                print(f"Error during training: {e}")
             if self.trn_it % save_interval == 0:
                 print(f"{datetime.datetime.now()}: {self.trn_it} - prev eps rewards: {self.episode_rewards}, curr eps reward {self.episode_last_step_reward}")
                 print(f"storage size {len(self.replay_buffer.storage)}, positive samples {len([i for i, t in enumerate(self.replay_buffer.storage) if t[-2] >= self.replay_buffer.positive_sample_threshold])}")

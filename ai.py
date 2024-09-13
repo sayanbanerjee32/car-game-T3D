@@ -100,19 +100,27 @@ class ReplayBuffer:
     def update_positive_threshold(self):
         if len(self.storage) > 1000:  # Only update after sufficient samples
             rewards = [t[-2] for t in self.storage]
-            self.positive_sample_threshold = np.percentile(rewards, 70)  # Set threshold at 70th percentile
+            self.positive_sample_threshold = np.percentile(rewards, 95)  # Set threshold at 95th percentile
 
     def delete_negative_samples(self):
         pos_indices = [i for i, t in enumerate(self.storage) if t[-2] >= self.positive_sample_threshold]
         neg_indices = [i for i in range(len(self.storage)) if i not in pos_indices]
         
+        initial_size = len(self.storage)
+        
+        # Calculate how many negative samples to keep
+        n_neg_to_keep = max(int(len(pos_indices) / self.positive_sample_ratio) - len(pos_indices), 0)
+        n_neg_to_keep = min(n_neg_to_keep, len(neg_indices))  # Ensure we don't keep more than available
+        
         # Keep all positive samples and randomly select negative samples
-        keep_neg = np.random.choice(neg_indices, size=min(len(neg_indices), int(len(pos_indices) / self.positive_sample_ratio) - len(pos_indices)), replace=False)
+        keep_neg = np.random.choice(neg_indices, size=n_neg_to_keep, replace=False)
         keep_indices = sorted(list(pos_indices) + list(keep_neg))
         
         self.storage = [self.storage[i] for i in keep_indices]
         self.ptr = len(self.storage) % self.max_size
-        print(f"Deleted {len(self.storage) - len(keep_indices)} negative samples")
+        
+        deleted_samples = initial_size - len(self.storage)
+        print(f"Deleted {deleted_samples} negative samples. Remaining samples: {len(self.storage)}")
 
     def sample(self, batch_size):
         if self.sample_count >= self.deletion_interval:
@@ -120,14 +128,28 @@ class ReplayBuffer:
             self.delete_negative_samples()
             self.sample_count = 0
 
+        total_samples = len(self.storage)
+        if total_samples < batch_size:
+            print(f"Warning: Not enough samples in buffer. Adjusting batch size from {batch_size} to {total_samples}")
+            batch_size = total_samples
+
         pos_indices = [i for i, t in enumerate(self.storage) if t[-2] >= self.positive_sample_threshold]
-        neg_indices = [i for i in range(len(self.storage)) if i not in pos_indices]
+        neg_indices = [i for i in range(total_samples) if i not in pos_indices]
 
         n_pos = min(int(batch_size * self.positive_sample_ratio), len(pos_indices))
         n_neg = batch_size - n_pos
 
-        pos_samples = np.random.choice(pos_indices, size=n_pos, replace=False)
-        neg_samples = np.random.choice(neg_indices, size=n_neg, replace=False)
+        # Adjust n_pos and n_neg if there aren't enough samples of either type
+        if len(pos_indices) < n_pos:
+            n_pos = len(pos_indices)
+            n_neg = min(batch_size - n_pos, len(neg_indices))
+        elif len(neg_indices) < n_neg:
+            n_neg = len(neg_indices)
+            n_pos = min(batch_size - n_neg, len(pos_indices))
+
+        # Sample with replacement if necessary
+        pos_samples = np.random.choice(pos_indices, size=n_pos, replace=len(pos_indices) < n_pos)
+        neg_samples = np.random.choice(neg_indices, size=n_neg, replace=len(neg_indices) < n_neg)
 
         ind = np.concatenate([pos_samples, neg_samples])
         np.random.shuffle(ind)
