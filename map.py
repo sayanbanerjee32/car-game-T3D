@@ -305,35 +305,39 @@ class Game(Widget):
 
     def get_reward(self, distance):
         new_reward = 0
+        # Living penalty
+        new_reward -= 0.1  # Small penalty for each step
         
-        # Distance-based reward
-        new_reward -= 0.1 * distance
+        # Distance-based reward (normalized by screen diagonal)
+        screen_diagonal = np.sqrt(self.width**2 + self.height**2)
+        new_reward -= distance / screen_diagonal
         
-        # Goal achievement reward
+        # Goal achievement reward (kept the same)
         if distance < 25:
-            new_reward += 50  # Increased from 10
+            new_reward += 50  # Large reward for reaching the goal
         
         # Ensure car position is within bounds
         x = max(5, min(int(self.car.x), self.width - 6))
         y = max(5, min(int(self.car.y), self.height - 6))
         
+        # Road following reward (increased importance)
         if sand[x, y] > 0:
+            new_reward -= 10  # Larger penalty for being off-road
             self.car.velocity = Vector(0.5, 0).rotate(self.car.angle)
-            new_reward -= 1  # Sand penalty
         else:
+            new_reward += 2  # Increased positive reward for staying on the road
             self.car.velocity = Vector(2, 0).rotate(self.car.angle)
-            new_reward -= 0.1  # Reduced living penalty
             if distance < self.last_distance: 
-                new_reward += 0.5  # Progress reward (added instead of overwritten)
+                new_reward += 1  # Increased reward for moving towards the goal while on the road
 
-        # Turn penalty
+        # Turn penalty (kept the same)
         angle_change = abs(self.car.angle - self.last_angle)
-        new_reward -= 0.05 * angle_change
+        new_reward -= 0.1 * angle_change / 360  # Normalize by full rotation
 
-        # Edge avoidance (proportional to closeness)
+        # Edge avoidance (slightly increased penalty)
         edge_distance = min(x, y, self.width - x - 1, self.height - y - 1)
-        if edge_distance < 100:
-            new_reward -= (100 - edge_distance) / 20
+        if edge_distance < 50:
+            new_reward -= (50 - edge_distance) / 5  # Increased penalty
 
         return new_reward
  
